@@ -10,49 +10,67 @@
 
 MODULE main
   VAR
-	queue: 0..5; 		-- свободных мест в очереди
-    order: array 0..4 of 0..4;  -- порядок в очереди
-	freeWindows: 0..3;  	-- количество свободных окон (to N)
-    serving : array 0..3-1 of 0..3; -- время обслуживания в окне (to N-1)
+    timeowner: 0..5;    -- кто выполняется
+	queue: 0 .. 5; 		-- свободных мест в очереди
+    order: array 0 .. 4 of -1 .. 4;  -- порядок в очереди
+	freeWindows: 0 .. n;  	-- количество свободных окон 
+    serving : array 0 .. n - 1 of 0 .. 3; -- время обслуживания в окне
     iteratedWindows: boolean;
-    freeWindowIndexes: array 0..4 of 0..3-1; --потенциальные окна для очереди (of 0..N-1)
-	place1: process QueuePlace(queue, freeWindows, order, 0, freeWindowIndexes, iteratedWindows, serving);	
-    place2: process QueuePlace(queue, freeWindows, order, 1, freeWindowIndexes, iteratedWindows, serving);	
-	place3: process QueuePlace(queue, freeWindows, order, 2, freeWindowIndexes, iteratedWindows, serving);	
-	place4: process QueuePlace(queue, freeWindows, order, 3, freeWindowIndexes, iteratedWindows, serving);	
-	place5: process QueuePlace(queue, freeWindows, order, 4, freeWindowIndexes, iteratedWindows, serving);
-    winsLoop: process Windows(freeWindows, freeWindowIndexes, iteratedWindows, serving);
+    freeWindowIndexes: array 0 .. 4 of -1 .. n - 1; --потенциальные окна для очереди 
+    index: 0 .. n - 1;
+	place1: process QueuePlace(queue, freeWindows, order, 0, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
+    place2: process QueuePlace(queue, freeWindows, order, 1, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
+	place3: process QueuePlace(queue, freeWindows, order, 2, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
+	place4: process QueuePlace(queue, freeWindows, order, 3, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
+	place5: process QueuePlace(queue, freeWindows, order, 4, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);
   DEFINE
-
+    n := 3; 
+    k := 2;
   ASSIGN
-	
-	
+	init(freeWindows) := n;
+    init(queue) := 5;
+    init(freeWindowIndexes[0]) := -1;
+    init(freeWindowIndexes[1]) := -1;
+    init(freeWindowIndexes[2]) := -1;
+    init(freeWindowIndexes[3]) := -1;
+    init(freeWindowIndexes[4]) := -1;
+    init(index) := 0;
+    init(order[0]) := -1;
+    init(order[1]) := -1;
+    init(order[2]) := -1;
+    init(order[3]) := -1;
+    init(order[4]) := -1;
+    init(iteratedWindows) := FALSE;
+    init(timeowner) := 5;
+
+
 -- клиенты никогда не напишут жалобы
-  CTLSPEC 
-	AG(place1.state != COMPLAINT & place2.state != COMPLAINT & place3.state != COMPLAINT & place4.state != COMPLAINT & place5.state != COMPLAINT);
+    CTLSPEC 
+	    AG(place1.state != COMPLAINT & place2.state != COMPLAINT & place3.state != COMPLAINT & place4.state != COMPLAINT & place5.state != COMPLAINT);
 
 
 -- пришедший раньше начнет обслуживаться раньше
-  CTLSPEC 
-	AG(order[0] < order[1] -> AF (place1.state = FREE & place2.state = WAIT));
 
 
 
-MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindows, serving)
+
+MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner)
   VAR
     state: {FREE, WAIT, COMPLAINT, OUT};
     income: 0..1;
-    patience: 0..5; -- K
+    patience: 0..k;
+  FAIRNESS running;
+
   ASSIGN
     init(state) := FREE;
-    init(income) := 0..1;  
-    init(patience) := 5;  --K
+    init(income) := 1;  
+    init(patience) := k; 
+    next(income) := 1;
 
-    next(income) := 0..1; -- случайное событие прихода клиента 50/50
-
+    --next(income) := 0..1; -- случайное событие прихода клиента 50/50
     next(state) := 
       case
-        (iteratedWindows = FALSE)                               : state;        --если идет перебор списка, то ждем ничего не делаем (как и везде далее)
+        (iteratedWindows = FALSE | timeowner != i)                               : state;        --если идет перебор списка, то ждем ничего не делаем (как и везде далее)
         (state = FREE & income = 1)                             : WAIT;         --если пришел и место свободно - занимает очередь
         (state = WAIT & freeWindows > 0 & order[i] = 0)	        : FREE;         --если ждал и настала его очередь - место освобождается
         (state = WAIT & freeWindows = 0 & patience = 0)	        : COMPLAINT;    --если ждал и кончилось терпение - пишет жалобу
@@ -64,49 +82,49 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
     -- уменьшаем терпение пользователя
     next(patience) := 
         case
-            (iteratedWindows = FALSE)               : patience;
+            (iteratedWindows = FALSE | timeowner != i)               : patience;
             patience > 0                            : patience - 1;
-            (state = FREE & next(state) = WAIT)  	: 5; --K
+            (state = FREE & next(state) = WAIT)  	: k;
             TRUE                                    : patience;
         esac;
 
     -- уменьшаем значение в очереди всех клиентов если она сдвинулась
     next(order[0]) :=
         case
-            (iteratedWindows = FALSE)                                                    : order[0];
-            (state = FREE & next(state) = WAIT & income = 1 & i = 0)                   : 5 - queue;
+            (iteratedWindows = FALSE | timeowner != i)                                                   : order[0];
+            (state = FREE & next(state) = WAIT & income = 1 & i = 0 & queue != 0)       : 5 - queue;
             ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[0] > 0)  	: order[0] - 1; 
             TRUE                                                                        : order[0];
         esac;
 
     next(order[1]) :=
         case
-            (iteratedWindows = FALSE)                                                   : order[1];
-            (state = FREE & next(state) = WAIT & income = 1 & i = 1)                    : 5 - queue;
+            (iteratedWindows = FALSE | timeowner != i)                                                   : order[1];
+            (state = FREE & next(state) = WAIT & income = 1 & i = 1 & queue != 0)       : 5 - queue;
             ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[1] > 0)  	: order[1] - 1; 
             TRUE                                                                        : order[1];
         esac;
 
     next(order[2]) :=
         case
-            (iteratedWindows = FALSE)                                                   : order[2];
-            (state = FREE & next(state) = WAIT & income = 1 & i = 2)                    : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[2] > 0)  	: order[2] - 1; 
+            (iteratedWindows = FALSE | timeowner != i)                                                   : order[2];
+            (state = FREE & next(state) = WAIT & income = 1 & i = 2 & queue != 0)       : 5 - queue;
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[2] > 0)  	: order[2] - 1;
             TRUE                                                                        : order[2];
         esac;
 
     next(order[3]) :=
         case
-            (iteratedWindows = FALSE)                                                   : order[3];
-            (state = FREE & next(state) = WAIT & income = 1 & i = 3)                    : 5 - queue;
+            (iteratedWindows = FALSE | timeowner != i)                                                   : order[3];
+            (state = FREE & next(state) = WAIT & income = 1 & i = 3 & queue != 0)       : 5 - queue;
             ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[3] > 0)  	: order[3] - 1; 
             TRUE                                                                        : order[3];
         esac;
 
     next(order[4]) :=
         case
-            (iteratedWindows = FALSE)                                                   : order[4];
-            (state = FREE & next(state) = WAIT & income = 1 & i = 4)                    : 5 - queue;
+            (iteratedWindows = FALSE | timeowner != i)                                                   : order[4];
+            (state = FREE & next(state) = WAIT & income = 1 & i = 4 & queue != 0)       : 5 - queue;
             ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[4] > 0)  	: order[4] - 1; 
             TRUE                                                                        : order[4];
         esac;
@@ -115,157 +133,101 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
     -- количество свободных мест в очереди
 	next(queue) :=
       case
-        (iteratedWindows = FALSE)               : queue;        
-        (state = FREE & next(state) = WAIT) 	: queue - 1; 
-		(state != FREE & next(state) = FREE)  	: queue + 1; 
+        (iteratedWindows = FALSE  | timeowner != i)                           : queue;        
+        (state = FREE & next(state) = WAIT & queue > 0) 	: queue - 1; 
+		(state != FREE & next(state) = FREE & queue < 5)  	: queue + 1; 
         TRUE					                : queue;
       esac;	
 
+
+    next(index) := 
+        case
+            timeowner = 4           : 0;
+            iteratedWindows = FALSE : (index + 1) mod n;
+            TRUE: index;
+        esac;
+
+    next(iteratedWindows) :=
+        case
+            index = n - 1 : TRUE; 
+            timeowner = 5 : FALSE;
+            TRUE: iteratedWindows;
+        esac;
+
+    next(timeowner) :=
+        case
+            index = n - 1 : 0;
+            timeowner < 5 & timeowner = i: timeowner + 1;
+            TRUE: timeowner;
+        esac;    
+
+
     -- количество свободных окон (увеличивается в модуле Windows, который осуществляет итерацию по массиву)
     next(freeWindows) :=
-        case 
-            (iteratedWindows = FALSE)                               : freeWindows;
-            (next(state) = FREE & freeWindows > 0 & order[i] = 0)  	: freeWindows - 1; 
-            TRUE					                                : freeWindows;
-        esac;	
+        case
+            (iteratedWindows = FALSE & serving[index] = 0 & freeWindows < n)  : freeWindows + 1;
+            (iteratedWindows = TRUE & timeowner = i & next(state) = FREE & freeWindows > 0 & order[i] = 0)  	: freeWindows - 1; 
+            TRUE                : freeWindows;
+        esac;
+    
 
-    -- занимаем свободное окно
     next(freeWindowIndexes[0]) :=
             case
-                (iteratedWindows = FALSE)        : freeWindowIndexes[0];                        
-                (freeWindowIndexes[0] != -1)     : -1;
-                TRUE                             : freeWindowIndexes[0];
+                (iteratedWindows = FALSE & serving[index] = 0 & freeWindowIndexes[0] = -1 & freeWindowIndexes[1] != index 
+                    & freeWindowIndexes[2] != index & freeWindowIndexes[3] != index & freeWindowIndexes[4] != index)    : index;
+                (iteratedWindows = TRUE & timeowner = i & freeWindowIndexes[0] != -1)                                                   : -1;
+                TRUE: freeWindowIndexes[0];
             esac;
 
     next(freeWindowIndexes[1]) :=
             case
-                (iteratedWindows = FALSE)        : freeWindowIndexes[1];                        
-                (freeWindowIndexes[0] = -1 & freeWindowIndexes[1] != -1)                                    : -1;
+                (iteratedWindows = FALSE & serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] = -1 & freeWindowIndexes[0] != index 
+                    & freeWindowIndexes[2] != index & freeWindowIndexes[3] != index & freeWindowIndexes[4] != index)                         : index;
+                (iteratedWindows = TRUE & timeowner = i & freeWindowIndexes[0] = -1 & freeWindowIndexes[1] != -1)                                            : -1;
                 TRUE: freeWindowIndexes[1];
             esac;
 
     next(freeWindowIndexes[2]) :=
             case
-                (iteratedWindows = FALSE)        : freeWindowIndexes[2];                        
-                (freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
-                                                                & freeWindowIndexes[2] != -1)               : -1;
+                (iteratedWindows = FALSE & serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
+                                                                & freeWindowIndexes[2] = -1 & freeWindowIndexes[1] != index 
+                    & freeWindowIndexes[0] != index & freeWindowIndexes[3] != index & freeWindowIndexes[4] != index)                         : index;
+                (iteratedWindows = TRUE & timeowner = i & freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
+                                                                & freeWindowIndexes[2] != -1)                                                : -1;
                 TRUE: freeWindowIndexes[2];
             esac;
 
     next(freeWindowIndexes[3]) :=
             case
-                (iteratedWindows = FALSE)        : freeWindowIndexes[3];                        
-                (freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
-                                        & freeWindowIndexes[2] = -1 & freeWindowIndexes[3] != -1)             : -1;
+                (iteratedWindows = FALSE & serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
+                                    & freeWindowIndexes[2] >= 0 & freeWindowIndexes[3] = -1 & freeWindowIndexes[1] != index 
+                    & freeWindowIndexes[2] != index & freeWindowIndexes[0] != index & freeWindowIndexes[4] != index)                         : index;
+                (iteratedWindows = TRUE & timeowner = i & freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
+                                        & freeWindowIndexes[2] = -1 & freeWindowIndexes[3] != -1)                                            : -1;
                 TRUE: freeWindowIndexes[3];
             esac;
 
     next(freeWindowIndexes[4]) :=
             case
-                (iteratedWindows = FALSE)        : freeWindowIndexes[4];                        
-                (freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
-                    & freeWindowIndexes[2] = -1 & freeWindowIndexes[3] = -1 & freeWindowIndexes[4] != -1)   : -1;
+                (iteratedWindows = FALSE & serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
+                    & freeWindowIndexes[2] >= 0 & freeWindowIndexes[3] >= 0 & freeWindowIndexes[4] = -1 & freeWindowIndexes[1] != index 
+                    & freeWindowIndexes[2] != index & freeWindowIndexes[3] != index & freeWindowIndexes[0] != index)                        : index;
+                (iteratedWindows = TRUE & timeowner = i & freeWindowIndexes[0] = -1 & freeWindowIndexes[1] = -1 
+                    & freeWindowIndexes[2] = -1 & freeWindowIndexes[3] = -1 & freeWindowIndexes[4] != -1)                                   : -1;
                 TRUE: freeWindowIndexes[4];
-            esac;
-
-
-
-MODULE Windows(freeWindows, freeWindowIndexes, iteratedWindows, serving)
-    VAR
-        index: 0..3-1; -- N-1
-    ASSIGN
-        init(index) := 0;
-
-        next(index) := (index + 1) mod 3; -- mod N
-
-        next(iteratedWindows) :=
-            case
-                index = N - 1 : TRUE;
-                TRUE          : FALSE;
-            esac;
-
-        next(serving[index]) :=
-            case
-                serving[index] > 0  : serving[index] -1;
-                TRUE                : serving[index];
-            esac;
-
-        next(freeWindows) :=
-            case
-                serving[index] = 0  : freeWindows + 1;
-                TRUE                : freeWindows;
             esac;
         
 
-        next(freeWindowIndexes[0]) :=
-                case
-                    (serving[index] = 0 & freeWindowIndexes[0] = -1)                                                : index;
-                    TRUE: freeWindowIndexes[0];
-                esac;
-
-        next(freeWindowIndexes[1]) :=
-                case
-                    (serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] = -1)                    : index;
-                    TRUE: freeWindowIndexes[1];
-                esac;
-
-        next(freeWindowIndexes[2]) :=
-                case
-                    (serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
-                                                                    & freeWindowIndexes[2] = -1)                   : index;
-                    TRUE: freeWindowIndexes[2];
-                esac;
-
-        next(freeWindowIndexes[3]) :=
-                case
-                    (serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
-                                         & freeWindowIndexes[2] >= 0 & freeWindowIndexes[3] = -1)                    : index;
-                    TRUE: freeWindowIndexes[3];
-                esac;
-
-        next(freeWindowIndexes[4]) :=
-                case
-                    (serving[index] = 0 & freeWindowIndexes[0] >= 0 & freeWindowIndexes[1] >= 0 
-                        & freeWindowIndexes[2] >= 0 & freeWindowIndexes[3] >= 0 & freeWindowIndexes[4] = -1)       : index;
-                    TRUE: freeWindowIndexes[4];
-                esac;
-            
-        -- задаем время обслуживания
-        next(serving[index]) :=
-                case
-                    (freeWindowIndexes[0] != -1 & next(freeWindowIndexes[0]) = -1 & freeWindowIndexes[0] = index)  : 1..3;
-                    (freeWindowIndexes[1] != -1 & next(freeWindowIndexes[1]) = -1 & freeWindowIndexes[1] = index)  : 1..3;
-                    (freeWindowIndexes[2] != -1 & next(freeWindowIndexes[2]) = -1 & freeWindowIndexes[2] = index)  : 1..3;
-                    (freeWindowIndexes[3] != -1 & next(freeWindowIndexes[3]) = -1 & freeWindowIndexes[3] = index)  : 1..3;
-                    (freeWindowIndexes[4] != -1 & next(freeWindowIndexes[4]) = -1 & freeWindowIndexes[4] = index)  : 1..3;
-
-                    TRUE                                                            : serving[index];
-                esac;
-
-        next(serving[freeWindowIndexes[1]]) :=
-                case
-                    (iteratedWindows = FALSE)                                       : serving[freeWindowIndexes[1]];  
-                    (freeWindowIndexes[1] != -1 & next(freeWindowIndexes[1]) = -1)  : 1..3;
-                    TRUE                                                            : serving[freeWindowIndexes[1]];
-                esac;
-
-        next(serving[freeWindowIndexes[2]]) :=
-                case
-                    (iteratedWindows = FALSE)                                       : serving[freeWindowIndexes[2]];  
-                    (freeWindowIndexes[2] != -1 & next(freeWindowIndexes[2]) = -1)  : 1..3;
-                    TRUE                                                            : serving[freeWindowIndexes[2]];
-                esac;
-
-        next(serving[freeWindowIndexes[3]]) :=
-                case
-                    (iteratedWindows = FALSE)                                       : serving[freeWindowIndexes[3]];  
-                    (freeWindowIndexes[3] != -1 & next(freeWindowIndexes[3]) = -1)  : 1..3;
-                    TRUE                                                            : serving[freeWindowIndexes[3]];
-                esac;
-
-        next(serving[freeWindowIndexes[4]]) :=
-                case
-                    (iteratedWindows = FALSE)                                        : serving[freeWindowIndexes[4]];  
-                    (freeWindowIndexes[4] != -1 & next(freeWindowIndexes[4]) = -1)   : 1..3;
-                    TRUE                                                             : serving[freeWindowIndexes[4]];
-                esac;
+    TRANS
+        case
+            iteratedWindows = TRUE :  serving[index] = serving[index];
+            freeWindows = n :  serving[index] = 0;                    
+            serving[index] > 0  : serving[index] = serving[index] -1;
+            (freeWindowIndexes[0] != -1 & next(freeWindowIndexes[0]) = -1 & freeWindowIndexes[0] = index)  : next(serving[index]) = 1 | next(serving[index]) = 2 | next(serving[index]) = 3;
+            (freeWindowIndexes[1] != -1 & next(freeWindowIndexes[1]) = -1 & freeWindowIndexes[1] = index)  : next(serving[index]) = 1 | next(serving[index]) = 2 | next(serving[index]) = 3;
+            (freeWindowIndexes[2] != -1 & next(freeWindowIndexes[2]) = -1 & freeWindowIndexes[2] = index)  : next(serving[index]) = 1 | next(serving[index]) = 2 | next(serving[index]) = 3;
+            (freeWindowIndexes[3] != -1 & next(freeWindowIndexes[3]) = -1 & freeWindowIndexes[3] = index)  : next(serving[index]) = 1 | next(serving[index]) = 2 | next(serving[index]) = 3;
+            (freeWindowIndexes[4] != -1 & next(freeWindowIndexes[4]) = -1 & freeWindowIndexes[4] = index)  : next(serving[index]) = 1 | next(serving[index]) = 2 | next(serving[index]) = 3;
+            TRUE                                                                                           : next(serving[index]) = serving[index];
+        esac;
+        
