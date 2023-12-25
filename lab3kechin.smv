@@ -25,7 +25,7 @@ MODULE main
 	place5: process QueuePlace(queue, freeWindows, order, 4, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);
   DEFINE
     n := 3; 
-    k := 2;
+    k := 1;
   ASSIGN
 	init(freeWindows) := n;
     init(queue) := 5;
@@ -48,8 +48,9 @@ MODULE main
     CTLSPEC 
 	    AG(place1.state != COMPLAINT & place2.state != COMPLAINT & place3.state != COMPLAINT & place4.state != COMPLAINT & place5.state != COMPLAINT);
 
-
 -- пришедший раньше начнет обслуживаться раньше
+    CTLSPEC 
+	    AG((order[0] < 0 -> place1.state = FREE) & (order[1] < 0 -> place2.state = FREE) & (order[2] < 0 -> place3.state = FREE) & (order[3] < 0 -> place4.state = FREE) & (order[4] < 0 -> place5.state = FREE));
 
 
 
@@ -57,7 +58,7 @@ MODULE main
 MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner)
   VAR
     state: {FREE, WAIT, COMPLAINT, OUT};
-    income: 0..1;
+    income: 0..4;
     patience: 0..k;
   FAIRNESS running;
 
@@ -83,8 +84,8 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
     next(patience) := 
         case
             (iteratedWindows = FALSE | timeowner != i)               : patience;
-            patience > 0                            : patience - 1;
             (state = FREE & next(state) = WAIT)  	: k;
+            patience > 0                            : patience - 1;
             TRUE                                    : patience;
         esac;
 
@@ -93,7 +94,7 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
         case
             (iteratedWindows = FALSE | timeowner != i)                                                   : order[0];
             (state = FREE & next(state) = WAIT & income = 1 & i = 0 & queue != 0)       : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[0] > 0)  	: order[0] - 1; 
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[0] >= 0)  	: order[0] - 1; 
             TRUE                                                                        : order[0];
         esac;
 
@@ -101,7 +102,7 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
         case
             (iteratedWindows = FALSE | timeowner != i)                                                   : order[1];
             (state = FREE & next(state) = WAIT & income = 1 & i = 1 & queue != 0)       : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[1] > 0)  	: order[1] - 1; 
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[1] >= 0)  	: order[1] - 1; 
             TRUE                                                                        : order[1];
         esac;
 
@@ -109,7 +110,7 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
         case
             (iteratedWindows = FALSE | timeowner != i)                                                   : order[2];
             (state = FREE & next(state) = WAIT & income = 1 & i = 2 & queue != 0)       : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[2] > 0)  	: order[2] - 1;
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[2] >= 0)  	: order[2] - 1;
             TRUE                                                                        : order[2];
         esac;
 
@@ -117,7 +118,7 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
         case
             (iteratedWindows = FALSE | timeowner != i)                                                   : order[3];
             (state = FREE & next(state) = WAIT & income = 1 & i = 3 & queue != 0)       : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[3] > 0)  	: order[3] - 1; 
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[3] >= 0)  	: order[3] - 1; 
             TRUE                                                                        : order[3];
         esac;
 
@@ -125,7 +126,7 @@ MODULE QueuePlace(queue, freeWindows, order, i, freeWindowIndexes, iteratedWindo
         case
             (iteratedWindows = FALSE | timeowner != i)                                                   : order[4];
             (state = FREE & next(state) = WAIT & income = 1 & i = 4 & queue != 0)       : 5 - queue;
-            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[4] > 0)  	: order[4] - 1; 
+            ((state = WAIT | state = COMPLAINT) & next(state) = FREE & order[4] >= 0)  	: order[4] - 1; 
             TRUE                                                                        : order[4];
         esac;
 
