@@ -14,18 +14,18 @@ MODULE main
 	queue: 0 .. 5; 		-- свободных мест в очереди
     order: array 0 .. 4 of -1 .. 4;  -- порядок в очереди
 	freeWindows: 0 .. n;  	-- количество свободных окон 
-    serving : array 0 .. n - 1 of 0 .. 3; -- время обслуживания в окне
+    serving : array -1 .. n - 1 of 0 .. 3; -- время обслуживания в окне
     iteratedWindows: boolean;
     freeWindowIndexes: array 0 .. 4 of -1 .. n - 1; --потенциальные окна для очереди 
-    index: 0 .. n - 1;
+    index: -1 .. n - 1;
 	place1: process QueuePlace(queue, freeWindows, order, 0, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
     place2: process QueuePlace(queue, freeWindows, order, 1, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
 	place3: process QueuePlace(queue, freeWindows, order, 2, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
 	place4: process QueuePlace(queue, freeWindows, order, 3, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);	
 	place5: process QueuePlace(queue, freeWindows, order, 4, freeWindowIndexes, iteratedWindows, serving, k, index, n, timeowner);
   DEFINE
-    n := 3; 
-    k := 1;
+    n := 2; 
+    k := 2;
   ASSIGN
 	init(freeWindows) := n;
     init(queue) := 5;
